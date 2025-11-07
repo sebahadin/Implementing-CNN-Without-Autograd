@@ -1,115 +1,122 @@
-# CNN from Scratch on MNIST
+# CNN from Scratch: MNIST Classification
 
-This project implements a Convolutional Neural Network (CNN) from scratch using PyTorch **without using autograd**. All layers, forward passes, and backward passes (gradient computations) are written manually to mimic what PyTorch's autograd engine does under the hood.
-
----
-
-## Project Overview
-
-* **Goal**: Classify handwritten digits from the MNIST dataset.
-* **Framework**: PyTorch (for tensors and helper functions only).
-* **Main Features**:
-
-  * Manual forward and backward implementations
-  * Convolutional layers, ReLU, max pooling, flattening, and fully connected layers
-  * Custom cross-entropy loss
-  * SGD optimizer (manual)
-  * Visualization of training and test performance
+This project implements a Convolutional Neural Network (CNN) from scratch using PyTorch **without autograd**. It manually defines the forward and backward passes for each layer, revealing the internal mechanisms of automatic differentiation systems.
 
 ---
 
-## Dataset
+## Overview
 
-We use the MNIST handwritten digit dataset:
+* **Objective**: Classify digits from the MNIST dataset.
+* **Framework**: PyTorch (only for tensor manipulation and utilities).
+* **Key Concepts**:
 
-* **Training set**: 48,000 samples
-* **Validation set**: 12,000 samples
-* **Test set**: 10,000 samples
+  * Manual forward propagation
+  * Manual backward propagation (gradient derivation)
+  * Custom layers (Conv2D, ReLU, MaxPool2D, Flatten, Linear)
+  * Manual cross-entropy loss and SGD optimizer
+  * Full training loop and performance visualization
 
-All images are normalized using the standard MNIST mean (`μ = 0.1307`) and standard deviation (`σ = 0.3081`).
+---
+
+## Dataset Preparation
+
+MNIST dataset is loaded and normalized with:
+
+* Mean: `0.1307`
+* Standard Deviation: `0.3081`
+
+The dataset is split into training (80%), validation (20%), and test sets. Each image is transformed into a tensor and normalized.
 
 ---
 
 ## Model Architecture
 
-Implemented in the `build_cnn()` function as a custom `Sequential` container:
+The CNN model follows this sequence:
 
-```python
-Conv2D(1, 8, kernel_size=3, stride=1, padding=1)  # 28x28 -> 28x28
-ReLU()
-MaxPool2D(kernel_size=2, stride=2)               # 28x28 -> 14x14
-Conv2D(8, 16, kernel_size=3, stride=1, padding=1) # 14x14 -> 14x14
-ReLU()
-MaxPool2D(kernel_size=2, stride=2)               # 14x14 -> 7x7
-Flatten()                                         # 16x7x7 -> 784
-Linear(784, 10)                                   # 784 -> 10 (class logits)
+```text
+Input (1×28×28)
+↓ Conv2D(1→8, 3×3, padding=1)
+↓ ReLU
+↓ MaxPool2D(2×2)
+↓ Conv2D(8→16, 3×3, padding=1)
+↓ ReLU
+↓ MaxPool2D(2×2)
+↓ Flatten
+↓ Linear(784 → 10)
+Output: Class scores (logits)
 ```
 
 ---
 
-## Forward Pass
+## Forward Pass Details
 
-Each `Module` subclass implements:
+### Convolution Layer
 
-* `__call__(x)`: stores intermediate values, calls `forward()`
-* `forward(x)`: computes the output
-
-### Conv2D (see `Conv2D.forward()`)
-
-**Operation:**
+Given input ( x \in \mathbb{R}^{N \times C_{in} \times H \times W} ) and kernels ( W \in \mathbb{R}^{C_{out} \times C_{in} \times k_H \times k_W} ):
 
 ```
-Y[n, c_out, h, w] = sum_c sum_i sum_j X[n, c, h+i, w+j] * W[c_out, c, i, j] + b[c_out]
+y[n, c_out, h, w] = Σ_{c, i, j} x[n, c, h+i, w+j] * W[c_out, c, i, j] + b[c_out]
 ```
 
-Implemented using `F.unfold` to extract image patches, and `torch.bmm` for batch matrix multiplication.
+Implemented using:
 
-### ReLU (see `ReLU.forward()`)
+* `F.unfold` to extract image patches
+* `torch.bmm` for batch matrix multiplication
+
+### ReLU
+
+Elementwise activation:
 
 ```
 ReLU(x) = max(0, x)
 ```
 
-Implemented with `torch.clamp(x, min=0)`.
+### Max Pooling
 
-### MaxPool2D (see `MaxPool2D.forward()`)
-
-```
-Y[n, c, h, w] = max_{(i,j) in window} X[n, c, sh + i, sw + j]
-```
-
-Implemented using `F.unfold`, reshaping and `max(dim=2)`.
-
-### Flatten (see `Flatten.forward()`)
+Pools over non-overlapping ( k \times k ) windows:
 
 ```
-[N, C, H, W] -> [N, C * H * W]
+y[n, c, h, w] = max(x[n, c, h:h+k, w:w+k])
 ```
 
-### Linear (see `Linear.forward()`)
+### Flatten
+
+Reshapes tensor:
 
 ```
-Y = X @ W + b
+[N, C, H, W] → [N, C × H × W]
 ```
 
-### CrossEntropy (see `CrossEntropy.forward()`)
+### Linear Layer
 
-Given logits `z ∈ ℝ^{N×C}` and labels `y ∈ {0,...,C-1}`:
+Fully connected transformation:
 
 ```
-L = -1/N * sum_i log(exp(z[i, y_i]) / sum_j exp(z[i, j]))
+y = xW + b
 ```
+
+### Cross-Entropy Loss
+
+For logits ( z \in \mathbb{R}^{N \times C} ) and true class indices ( y \in {0, ..., C-1} ):
+
+```
+L = -1/N × Σ_i log(softmax(z_i)[y_i])
+```
+
+Implemented with a numerically stable log-softmax computation.
 
 ---
 
-## Manual Gradient Computation (Backward Pass)
+## Manual Backpropagation: Gradient Derivations
 
-Each layer implements `bwd(out, *args)` called via `backward()`, updating `x.g` (gradients).
+Every tensor manually stores its gradient in `.g`. Each layer implements a `.bwd()` method to compute gradients.
 
-### ReLU (see `ReLU.bwd()`)
+### ReLU Backpropagation
+
+The derivative of ReLU is:
 
 ```
-dL/dx = dL/dy * (x > 0)
+dL/dx = dL/dout * 1(x > 0)
 ```
 
 Code:
@@ -118,12 +125,26 @@ Code:
 x.g = out.g * (x > 0).float()
 ```
 
-### Linear (see `Linear.bwd()`)
+### Linear Layer Backpropagation
+
+Given ( y = xW + b ):
+
+* Gradient w.r.t. weights:
 
 ```
-dL/dW = x.T @ dL/dy
-dL/db = sum(dL/dy)
-dL/dx = dL/dy @ W.T
+dL/dW = xᵀ @ dL/dy
+```
+
+* Gradient w.r.t. bias:
+
+```
+dL/db = sum(dL/dy, dim=0)
+```
+
+* Gradient w.r.t. input:
+
+```
+dL/dx = dL/dy @ Wᵀ
 ```
 
 Code:
@@ -134,39 +155,58 @@ self.b.g = out.g.sum(0)
 x.g = out.g @ self.w.T
 ```
 
-### Conv2D (see `Conv2D.bwd()`)
+### Conv2D Backpropagation
 
-Gradient of weights:
+* Input unfolded: ( X_{unf} )
+* Output gradients: ( G )
 
-```
-dL/dW = sum_n (G[n] @ X_unfold[n].T)
-```
-
-Gradient of input:
+**Weight gradients** (accumulated across batches):
 
 ```
-dL/dX = fold(W.T @ G)
+dL/dW = Σ_n G[n] @ X_unf[n]ᵀ
 ```
 
-Implemented using `F.fold`, `F.unfold`, and `torch.bmm`.
-
-### MaxPool2D (see `MaxPool2D.bwd()`)
+**Bias gradient**:
 
 ```
-dL/dx[i] = dL/dy if x[i] was max in window, else 0
+dL/db = G.sum(dim=(0, 2))
+```
+
+**Input gradient** (folded back into image shape):
+
+```
+dL/dx = fold(Wᵀ @ G)
+```
+
+### MaxPool2D Backpropagation
+
+Max pooling passes gradients only to max positions from forward pass.
+
+```
+dL/dx[i] = dL/dy if x[i] was max else 0
 ```
 
 Code:
 
 ```python
-Xg_cols.scatter_(2, self.max_idx.unsqueeze(2), G_cols.unsqueeze(2))
+Xg_cols.scatter_(2, max_idx.unsqueeze(2), G_cols.unsqueeze(2))
 ```
 
-### CrossEntropy (see `CrossEntropy.bwd()`)
+### CrossEntropy Backpropagation
+
+Let ( ,
+abla_z L ) be the gradient of the loss w.r.t. the logits:
+
+* Compute softmax:
 
 ```
-softmax = exp(logits) / sum(exp(logits))
-dL/dlogits = (softmax - one_hot) / N
+softmax(z) = exp(z) / sum(exp(z))
+```
+
+* Gradient of the loss:
+
+```
+dL/dz = (softmax - one_hot(y)) / N
 ```
 
 Code:
@@ -177,68 +217,38 @@ logits.g = (softmax - one_hot) / N
 
 ---
 
-## Training Loop
+## Training Procedure
 
-In `train_model()`:
-
-1. Shuffle training set
+1. Shuffle and batch training data
 2. For each batch:
 
-   * Forward pass: `logits = net(X_batch)`
+   * Forward pass through the network
+   * Compute loss using CrossEntropy
+   * Manually zero gradients
+   * Call `.bwd()` on loss, then `.backward()` on network
+   * Update weights using SGD:
 
-   * Compute loss: `loss = criterion(logits, y_batch)`
-
-   * Zero gradients: `p.g = torch.zeros_like(p)`
-
-   * Backward pass:
-
-     ```python
-     criterion.bwd(loss, logits, y_batch)
-     net.backward(logits)
-     ```
-
-   * SGD update:
-
-     ```
-     p = p - lr * p.g
+     ```text
+     param = param - lr * param.g
      ```
 
 ---
 
-## Utility Functions
+## Metrics & Evaluation
 
-* `params_of(net)` collects all trainable parameters (`W`, `b`)
-* `sgd_step(params, lr)` updates:
-
-```
-p = p - lr * p.g
-```
-
-* `accuracy(logits, y)` returns correct classification rate
+Training/validation loss and accuracy are tracked and plotted over epochs.
+The final test accuracy is computed using the trained model.
 
 ---
 
-## Results
+## Summary: What You Learn About Autograd
 
-Training history is visualized:
+This implementation emulates PyTorch's autograd system:
 
-* Loss vs. Epoch (Train and Validation)
-* Accuracy vs. Epoch (Train and Validation)
+* Tracks all intermediate operations
+* Stores tensors for backward pass
+* Computes gradients using the chain rule
 
-Final test accuracy is computed and printed.
-
----
-
-## Manual Backprop and Autograd
-
-This project mirrors PyTorch's autograd engine:
-
-* Stores inputs and outputs of each layer
-* Implements backward gradient propagation using chain rule
-* Mimics computation graph and parameter updates
-
-Every `Module` has `.forward()` and `.bwd()` methods to compute gradients, replacing PyTorch's automatic differentiation.
+Every operation's backward computation is written explicitly — giving insight into the core of deep learning frameworks.
 
 ---
-
-
