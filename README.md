@@ -26,7 +26,7 @@ We use the MNIST handwritten digit dataset:
 * **Validation set**: 12,000 samples
 * **Test set**: 10,000 samples
 
-All images are normalized using the standard MNIST mean (( \mu = 0.1307 )) and standard deviation (( \sigma = 0.3081 )).
+All images are normalized using the standard MNIST mean (`μ = 0.1307`) and standard deviation (`σ = 0.3081`).
 
 ---
 
@@ -34,7 +34,7 @@ All images are normalized using the standard MNIST mean (( \mu = 0.1307 )) and s
 
 Implemented in the `build_cnn()` function as a custom `Sequential` container:
 
-```
+```python
 Conv2D(1, 8, kernel_size=3, stride=1, padding=1)  # 28x28 -> 28x28
 ReLU()
 MaxPool2D(kernel_size=2, stride=2)               # 28x28 -> 14x14
@@ -56,64 +56,63 @@ Each `Module` subclass implements:
 
 ### Conv2D (see `Conv2D.forward()`)
 
-* Operation:
-  [
-  Y[n, c_{out}, h, w] = \sum_{c=0}^{C_{in}-1} \sum_{i=0}^{k_H-1} \sum_{j=0}^{k_W-1} X[n, c, h+i, w+j] \cdot W[c_{out}, c, i, j] + b[c_{out}]
-  ]
-* Implemented with `F.unfold` to extract image patches, and `torch.bmm` for batch matrix multiplication.
+**Operation:**
+
+```
+Y[n, c_out, h, w] = sum_c sum_i sum_j X[n, c, h+i, w+j] * W[c_out, c, i, j] + b[c_out]
+```
+
+Implemented using `F.unfold` to extract image patches, and `torch.bmm` for batch matrix multiplication.
 
 ### ReLU (see `ReLU.forward()`)
 
-* Elementwise nonlinearity:
-  [
-  \text{ReLU}(x) = \max(0, x)
-  ]
-* Implemented with `torch.clamp(x, min=0)`
+```
+ReLU(x) = max(0, x)
+```
+
+Implemented with `torch.clamp(x, min=0)`.
 
 ### MaxPool2D (see `MaxPool2D.forward()`)
 
-* Pooling operation over ( k \times k ) windows:
-  [
-  Y[n, c, h, w] = \max_{(i,j) \in k \times k} X[n, c, h+i, w+j]
-  ]
-* Implemented with `F.unfold`, `view`, and `max(dim=2)`
+```
+Y[n, c, h, w] = max_{(i,j) in window} X[n, c, sh + i, sw + j]
+```
+
+Implemented using `F.unfold`, reshaping and `max(dim=2)`.
 
 ### Flatten (see `Flatten.forward()`)
 
-* Reshapes input:
-  [
-  X \in \mathbb{R}^{N \times C \times H \times W} \Rightarrow X' \in \mathbb{R}^{N \times (C \cdot H \cdot W)}
-  ]
-* Done with `x.view(x.size(0), -1)`
+```
+[N, C, H, W] -> [N, C * H * W]
+```
 
 ### Linear (see `Linear.forward()`)
 
-* Fully connected layer:
-  [
-  Y = XW + b
-  ]
-* Implemented as `x @ self.w + self.b`
+```
+Y = X @ W + b
+```
 
 ### CrossEntropy (see `CrossEntropy.forward()`)
 
-* Given logits ( z \in \mathbb{R}^{N \times C} ), targets ( y \in {0,...,C-1} ):
-  [
-  \mathcal{L} = -\frac{1}{N} \sum_{i=1}^N \log \left( \frac{\exp(z_{i, y_i})}{\sum_j \exp(z_{i,j})} \right)
-  ]
+Given logits `z ∈ ℝ^{N×C}` and labels `y ∈ {0,...,C-1}`:
+
+```
+L = -1/N * sum_i log(exp(z[i, y_i]) / sum_j exp(z[i, j]))
+```
 
 ---
 
 ## Manual Gradient Computation (Backward Pass)
 
-Each layer implements `bwd(out, *args)` called via `backward()`, updating `x.g` (i.e., gradients).
+Each layer implements `bwd(out, *args)` called via `backward()`, updating `x.g` (gradients).
 
 ### ReLU (see `ReLU.bwd()`)
 
-* Derivative:
-  [
-  \frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \mathbb{1}_{x > 0}
-  ]
-* Code:
+```
+dL/dx = dL/dy * (x > 0)
+```
+
+Code:
 
 ```python
 x.g = out.g * (x > 0).float()
@@ -121,13 +120,13 @@ x.g = out.g * (x > 0).float()
 
 ### Linear (see `Linear.bwd()`)
 
-* Derivatives:
-  [
-  \frac{\partial L}{\partial W} = X^T \cdot \frac{\partial L}{\partial Y}, \quad
-  \frac{\partial L}{\partial b} = \sum \frac{\partial L}{\partial Y}, \quad
-  \frac{\partial L}{\partial X} = \frac{\partial L}{\partial Y} \cdot W^T
-  ]
-* Code:
+```
+dL/dW = x.T @ dL/dy
+dL/db = sum(dL/dy)
+dL/dx = dL/dy @ W.T
+```
+
+Code:
 
 ```python
 self.w.g = x.T @ out.g
@@ -137,27 +136,27 @@ x.g = out.g @ self.w.T
 
 ### Conv2D (see `Conv2D.bwd()`)
 
-* Gradient of filter:
-  [
-  \frac{\partial L}{\partial W} = \sum_{n=1}^N G[n] \cdot X_{\text{unfold}}[n]^T
-  ]
-* Gradient of input (reconstructed):
-  [
-  \frac{\partial L}{\partial X} = F.\text{fold}(W^T \cdot G)
-  ]
-* Code uses `F.unfold`, `F.fold`, and `torch.bmm`
+Gradient of weights:
+
+```
+dL/dW = sum_n (G[n] @ X_unfold[n].T)
+```
+
+Gradient of input:
+
+```
+dL/dX = fold(W.T @ G)
+```
+
+Implemented using `F.fold`, `F.unfold`, and `torch.bmm`.
 
 ### MaxPool2D (see `MaxPool2D.bwd()`)
 
-* Only propagate gradient to the max index in each patch:
-  [
-  \frac{\partial L}{\partial x_{i}} =
-  \begin{cases}
-  \frac{\partial L}{\partial y} & \text{if } x_{i} = \max(x) \
-  0 & \text{otherwise}
-  \end{cases}
-  ]
-* Code:
+```
+dL/dx[i] = dL/dy if x[i] was max in window, else 0
+```
+
+Code:
 
 ```python
 Xg_cols.scatter_(2, self.max_idx.unsqueeze(2), G_cols.unsqueeze(2))
@@ -165,15 +164,12 @@ Xg_cols.scatter_(2, self.max_idx.unsqueeze(2), G_cols.unsqueeze(2))
 
 ### CrossEntropy (see `CrossEntropy.bwd()`)
 
-* Softmax:
-  [
-  \hat{y}_i = \frac{\exp(z_i)}{\sum_j \exp(z_j)}
-  ]
-* Gradient:
-  [
-  \frac{\partial L}{\partial z} = \frac{1}{N} (\hat{y} - y)
-  ]
-* Code:
+```
+softmax = exp(logits) / sum(exp(logits))
+dL/dlogits = (softmax - one_hot) / N
+```
+
+Code:
 
 ```python
 logits.g = (softmax - one_hot) / N
@@ -189,29 +185,35 @@ In `train_model()`:
 2. For each batch:
 
    * Forward pass: `logits = net(X_batch)`
+
    * Compute loss: `loss = criterion(logits, y_batch)`
+
    * Zero gradients: `p.g = torch.zeros_like(p)`
+
    * Backward pass:
 
      ```python
      criterion.bwd(loss, logits, y_batch)
      net.backward(logits)
      ```
+
    * SGD update:
-     [
-     \theta \leftarrow \theta - \eta \cdot \nabla_\theta \mathcal{L}
-     ]
-     via `sgd_step(params, lr)`
+
+     ```
+     p = p - lr * p.g
+     ```
 
 ---
 
 ## Utility Functions
 
-* `params_of(net)` collects all trainable parameters (W, b)
-* `sgd_step(params, lr)` updates parameters:
-  [
-  \theta := \theta - \eta \cdot \theta.g
-  ]
+* `params_of(net)` collects all trainable parameters (`W`, `b`)
+* `sgd_step(params, lr)` updates:
+
+```
+p = p - lr * p.g
+```
+
 * `accuracy(logits, y)` returns correct classification rate
 
 ---
@@ -235,7 +237,7 @@ This project mirrors PyTorch's autograd engine:
 * Implements backward gradient propagation using chain rule
 * Mimics computation graph and parameter updates
 
-Every `Module` has `.forward()` and `.bwd()` functions to compute gradients, replacing PyTorch's automatic differentiation.
+Every `Module` has `.forward()` and `.bwd()` methods to compute gradients, replacing PyTorch's automatic differentiation.
 
 ---
 
