@@ -241,18 +241,4 @@ Every `Module` has `.forward()` and `.bwd()` methods to compute gradients, repla
 
 ---
 
-## File Structure
 
-```bash
-.
-├── computer_vision_cnn_hw1.py  # Core implementation
-└── README.md                   # This file
-```
-
----
-
-## Acknowledgements
-
-* MNIST dataset provided by torchvision
-
----
